@@ -1,40 +1,54 @@
-# hawk-bt — Python Client for Hawk-Backtester
+# hawk-bt — Python Client for Backnest
 
-A Python client library for controlling the browser-based WASM trading engine.
-Build, backtest, and evaluate algorithmic trading strategies programmatically.
+> **Renaming to `backnest` is planned.** The PyPI package name will change from `hawk-bt` to `backnest` in a future release.
 
-This library works alongside the [Hawk-Backtester](https://app.hawk-backtester.com) web app — your strategies run locally in Python while the simulation engine runs in the browser via WASM. See the [documentation](https://app.hawk-backtester.com/py-engine/) for detailed usage and setup instructions.
+Python client library for [Backnest](https://app.hawk-backtester.com) — agent-native backtesting infrastructure.
 
-## Architecture
+Your AI agent (or you) writes a Python strategy locally, connects to the Backnest WASM simulator in the browser via WebSocket, and receives structured, ticket-level analysis results. Strategy code never leaves your machine.
+
+## How it works
 
 ```
-Browser (WASM Engine + UI)
-    ↕  WebSocket (binary, lock-step RPC)
-hawk-bt (Python)
-    ↕  py_engine_rust (Rust extension, required)
+Your AI Agent / You
+    ↕  generates & iterates strategy
+hawk-bt (Python, runs locally)
+    ↕  WebSocket (binary RPC)
+Backnest (browser WASM simulator)
+    ↕  structured JSON results
+Agent analyzes → next iteration
 ```
 
-- **WASM Engine**: The core trading simulation running in the browser
-- **hawk-bt**: Python client handling strategy execution and state management
-- **py_engine_rust**: Rust extension for WebSocket communication, binary codec, and RPC (required dependency)
+- **Backnest**: Browser-based WASM trading simulator with ticket-level analysis
+- **hawk-bt**: Python client for strategy execution and engine communication
+- **py_engine_rust** (Rust extension): WebSocket transport and binary codec (required)
 
 ## Requirements
 
 - Python >= 3.10
-- `py-engine-rust` (Rust extension, **required**)
+- `hawk-bt-rust-engine` (Rust extension, **required**)
 - `numpy >= 1.23`
 
 ```bash
-pip install -e .
+pip install hawk-bt
 ```
 
 ## Quick Start
 
+### For AI agents
+
+1. Create a [Backnest account](https://app.hawk-backtester.com/accounts/signup/) (Trial is free)
+2. Generate an Agent API key from Settings
+3. Hand your agent the [Agent API docs](https://app.hawk-backtester.com/agent-manual/) — it can drive the full workflow autonomously
+
+The agent receives structured JSON with ticket-level MFE/MAE, exit reasons, exposure time series, cost attribution, and more.
+
+### For manual use
+
 ```python
 import asyncio
-from py_engine.runtime.rust_engine_async_adapter import RustEngineAsyncAdapter
-from py_engine.runtime.loop import run_attached
-from py_engine.strategy.api import Strategy, Context
+from hawk_bt.runtime.rust_engine_async_adapter import RustEngineAsyncAdapter
+from hawk_bt.runtime.loop import run_attached
+from hawk_bt.strategy.api import Strategy, Context
 
 class MyStrategy(Strategy):
     async def step(self, ctx: Context) -> None:
@@ -42,7 +56,10 @@ class MyStrategy(Strategy):
         price = s.current_rate
 
         if price > 100.0 and s.tickets_num == 0:
-            await ctx.engine.place_ticket(side="buy", units=10, sub_limit_pips=5.0, stop_order_pips=3.0)
+            await ctx.engine.place_ticket(
+                side="buy", units=10,
+                sub_limit_pips=5.0, stop_order_pips=3.0,
+            )
 
 async def main():
     engine = RustEngineAsyncAdapter(host="127.0.0.1", port=8787)
@@ -55,11 +72,26 @@ async def main():
 asyncio.run(main())
 ```
 
-## What You Can Do
+## What your agent gets back
 
-### 1. Write a Strategy
+A single Backnest API response returns structured JSON with:
 
-Subclass `Strategy` and implement `step()`. It is called automatically on every simulation step.
+- Ticket-level MFE / MAE
+- Exit reason per trade
+- Long / Short PnL breakdown
+- Cost attribution (spread, commission)
+- Exposure time series
+- Equity curve & drawdown
+- Holding period distribution
+- Order frequency & regime hints
+
+See [Analysis Results](https://app.hawk-backtester.com/analysis/) for the full schema.
+
+## Strategy API
+
+### Writing a strategy
+
+Subclass `Strategy` and implement `step()`. Called on every simulation step.
 
 ```python
 class Strategy(ABC):
@@ -68,14 +100,14 @@ class Strategy(ABC):
 ```
 
 Available via `ctx`:
-- `ctx.state.statics` — Current assets, price, and position info (`Statics`)
-- `ctx.engine` — Engine operations (`BoundEngine`)
+- `ctx.state.statics` — Current assets, price, and position info
+- `ctx.engine` — Engine operations (trade, query)
 - `ctx.state.done` — Simulation completion flag
-- `ctx.user` — Free-use `dict` for state persistence, logging, etc.
+- `ctx.user` — Free-use `dict` for state persistence
 
-### 2. Trade Operations
+### Trade operations
 
-#### Market Entry (place_ticket)
+#### Market entry
 
 ```python
 out = await ctx.engine.place_ticket(
@@ -85,42 +117,36 @@ out = await ctx.engine.place_ticket(
     stop_order_pips=3.0,  # SL (absolute price difference, optional)
     trail_pips=2.0,       # trailing stop (optional)
 )
-# out: shape (14,) — [0]=flag (ticket ID), [1..4]=reward fields, [5]=current_rate, ...
 ```
 
-#### Pending Order (place_token)
+#### Pending order
 
 ```python
 out = await ctx.engine.place_token(
-    side="sell",          # "buy" | "sell"
+    side="sell",
     order="limit",        # "limit" | "stop"
-    price=90.0,           # order price
+    price=90.0,
     units=80,
-    sub_limit_pips=8.0,   # TP (optional)
-    stop_order_pips=25.0, # SL (optional)
-    trail_pips=None,      # trailing stop (optional)
+    sub_limit_pips=8.0,
+    stop_order_pips=25.0,
+    trail_pips=None,
     time_limits=240.0,    # expiry in steps (optional)
 )
-# out: shape (18,) — [0]=flag (token ID), ...
 ```
 
-#### Close Position (close_step)
+#### Close position
 
 ```python
 events = await ctx.engine.close_step(
-    flags=[ticket_flag],  # target ticket flag (ID)
-    actions=[1],          # 1=full close, 2=partial close (REDUCE)
+    flags=[ticket_flag],  # ticket ID(s)
+    actions=[1],          # 1=full close, 2=partial (REDUCE)
     ratios=[0.0],         # ratio for action=2 (0.0–1.0)
 )
-# events: shape (N, 5) — close results
 ```
 
-Batch closing of multiple tickets is supported by passing arrays.
-
-### 3. Market Data
+### Market data
 
 ```python
-# Current state
 statics = await ctx.engine.get_statics()
 statics.assets           # account balance
 statics.virtual_assets   # balance including unrealized P&L
@@ -130,26 +156,19 @@ statics.total_steps      # total steps
 statics.margin_ratio     # margin ratio
 statics.tickets_num      # open ticket count
 statics.token_num        # pending order count
-# ... 20+ fields
 
-# Ticket list
 tickets = await ctx.engine.get_ticket_list()
-# shape (rows, cols) — each row is one ticket's details
 ```
 
-### 4. Running Simulations
+### Running simulations
 
-#### Attached Mode (browser-driven)
-
-Runs the strategy against OHLC data already loaded in the browser.
+#### Attached mode (browser-driven)
 
 ```python
 result = await run_attached(engine, strategy, gate_policy="eager")
 ```
 
-#### Backtest Mode (Python-driven)
-
-Sends OHLC data from Python and runs the backtest.
+#### Backtest mode (Python-driven)
 
 ```python
 result = await run_backtest(engine, strategy, ohlc5, steps=5000)
@@ -160,89 +179,40 @@ result = await run_backtest(engine, strategy, ohlc5, steps=5000)
 #### BacktestResult
 
 ```python
-result.steps              # number of steps executed
-result.assets             # np.ndarray — asset history per step
-result.virtual_assets     # np.ndarray — asset history including unrealized P&L
+result.steps              # steps executed
+result.assets             # np.ndarray — asset history
+result.virtual_assets     # np.ndarray — including unrealized P&L
 result.price              # np.ndarray — price history
-result.final_assets()     # final account balance
-result.max_drawdown()     # max drawdown (negative value)
+result.final_assets()     # final balance
+result.max_drawdown()     # max drawdown (negative)
 ```
 
-### 5. Connection
-
-```python
-from py_engine.runtime.rust_engine_async_adapter import RustEngineAsyncAdapter
-
-engine = RustEngineAsyncAdapter(host="127.0.0.1", port=8787)
-await engine.start()
-await engine.wait_connected()
-```
-
-### 6. Gate Policy
-
-Controls intra-step state synchronization. Can be set in the browser UI or auto-detected via `get_gate_policy_hint()`.
-
-- **`eager`** (default): Runs `affect` + `get_statics` after every operation. Accurate but slower.
-- **`step_end`**: Syncs only at step end. Faster but intermediate state may be stale.
-
-```python
-gate_policy = await engine.get_gate_policy_hint() or "eager"
-result = await run_attached(engine, strategy, gate_policy=gate_policy)
-```
-
-## Responsibility Split
-
-### hawk-bt handles
-
-- WebSocket connection management (server startup, connection waiting, disconnect detection)
-- Binary protocol encode/decode (Rust implementation)
-- RPC communication (send → await response, timeout, error handling)
-- Step loop control (`run_attached` / `run_backtest`)
-- Automatic state sync (`BoundEngine` runs `affect` → `get_statics`)
-- Termination detection (margin call `GAME_BREAK` / completion `GAME_END`)
-- Progress display (`create_progress_printer`)
-
-### You handle
-
-- **Strategy logic**: When, what, and how much to trade
-- **Parameter design**: TP/SL levels, lot sizes, entry conditions
-- **Risk management**: Max positions, margin ratio monitoring, drawdown limits
-- **OHLC data preparation**: Provide `(N, 5)` numpy arrays for backtest mode
-- **Result analysis**: Interpret `BacktestResult`, evaluate performance
-- **Browser setup**: Open the browser UI with the WASM engine before connecting
-
-### hawk-bt does NOT
-
-- Recommend or optimize strategies
-- Automatically limit risk (you handle this in `step()`)
-- Fetch or preprocess OHLC data
-- Manage the browser-side WASM engine
-
-## TP/SL Behavior
+## TP/SL behavior
 
 - TP/SL values are **absolute price differences** (not pips or percentages)
 - Buy TP hit: `high >= open_rate + sub_limit_pips`
 - Buy SL hit: `low <= open_rate - stop_order_pips`
-- When both TP and SL are hit on the same bar: **SL takes priority**
-- Close price is set to the bar's close price (not the exact TP/SL level)
+- When both hit on the same bar: **SL takes priority**
+- Close price is set to the bar's close (not the exact TP/SL level)
 
-## Project Structure
+## Gate policy
 
+Controls intra-step state synchronization:
+
+- **`eager`** (default): Syncs after every operation. Accurate but slower.
+- **`step_end`**: Syncs only at step end. Faster but intermediate state may be stale.
+
+```python
+gate_policy = await engine.get_gate_policy_hint() or "eager"
 ```
-py_engine/
-├── src/py_engine/
-│   ├── runtime/
-│   │   ├── engine_api.py     # Statics, BoundEngine
-│   │   ├── loop.py           # run_backtest, run_attached, BacktestResult
-│   │   ├── rust_engine_async_adapter.py  # RustEngineAsyncAdapter
-│   │   └── progress.py       # Progress display
-│   ├── strategy/
-│   │   └── api.py            # Strategy, Context, EngineState, Engine protocol
-│   └── results/              # (extensible)
-├── examples/
-│   └── simple_ma.py          # MA crossover strategy example
-└── pyproject.toml
-```
+
+## Documentation
+
+- [Backnest](https://app.hawk-backtester.com) — Main platform
+- [Agent API Manual](https://app.hawk-backtester.com/agent-manual/) — AI agent integration
+- [hawk-bt Docs](https://app.hawk-backtester.com/py-engine/) — Detailed library reference
+- [Analysis Results](https://app.hawk-backtester.com/analysis/) — Result schema
+- [Simulation Model](https://app.hawk-backtester.com/simulation-model/) — Engine internals
 
 ## License
 
