@@ -3,9 +3,9 @@ requires = ["maturin>=1.0,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "hawk-bt-rust-engine"
+name = "backnest-rust-engine"
 version = "0.1.2"
-description = "Rust-based WS/RPC engine for hawk-bt (Hawk-Backtester)"
+description = "Rust-based WS/RPC engine for Backnest"
 requires-python = ">=3.10"
 
 [tool.maturin]

@@ -1,6 +1,6 @@
-# hawk-bt — Python Client for Backnest
+# backnest — Python Client for Backnest
 
-> **Renaming to `backnest` is planned.** The PyPI package name will change from `hawk-bt` to `backnest` in a future release.
+> Previously published as `hawk-bt`. The package has been renamed to `backnest`.
 
 Python client library for [Backnest](https://app.hawk-backtester.com) — agent-native backtesting infrastructure.
 
@@ -11,7 +11,7 @@ Your AI agent (or you) writes a Python strategy locally, connects to the Backnes
 ```
 Your AI Agent / You
     ↕  generates & iterates strategy
-hawk-bt (Python, runs locally)
+backnest (Python, runs locally)
     ↕  WebSocket (binary RPC)
 Backnest (browser WASM simulator)
     ↕  structured JSON results
@@ -19,17 +19,17 @@ Agent analyzes → next iteration
 ```
 
 - **Backnest**: Browser-based WASM trading simulator with ticket-level analysis
-- **hawk-bt**: Python client for strategy execution and engine communication
+- **backnest**: Python client for strategy execution and engine communication
 - **py_engine_rust** (Rust extension): WebSocket transport and binary codec (required)
 
 ## Requirements
 
 - Python >= 3.10
-- `hawk-bt-rust-engine` (Rust extension, **required**)
+- `backnest-rust-engine` (Rust extension, **required**)
 - `numpy >= 1.23`
 
 ```bash
-pip install hawk-bt
+pip install backnest
 ```
 
 ## Quick Start
@@ -46,9 +46,9 @@ The agent receives structured JSON with ticket-level MFE/MAE, exit reasons, expo
 
 ```python
 import asyncio
-from hawk_bt.runtime.rust_engine_async_adapter import RustEngineAsyncAdapter
-from hawk_bt.runtime.loop import run_attached
-from hawk_bt.strategy.api import Strategy, Context
+from backnest.runtime.rust_engine_async_adapter import RustEngineAsyncAdapter
+from backnest.runtime.loop import run_attached
+from backnest.strategy.api import Strategy, Context
 
 class MyStrategy(Strategy):
     async def step(self, ctx: Context) -> None:
@@ -210,7 +210,7 @@ gate_policy = await engine.get_gate_policy_hint() or "eager"
 
 - [Backnest](https://app.hawk-backtester.com) — Main platform
 - [Agent API Manual](https://app.hawk-backtester.com/agent-manual/) — AI agent integration
-- [hawk-bt Docs](https://app.hawk-backtester.com/py-engine/) — Detailed library reference
+- [Backnest Docs](https://app.hawk-backtester.com/py-engine/) — Detailed library reference
 - [Analysis Results](https://app.hawk-backtester.com/analysis/) — Result schema
 - [Simulation Model](https://app.hawk-backtester.com/simulation-model/) — Engine internals
 
