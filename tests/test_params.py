@@ -103,3 +103,20 @@ def test_cli_factory_requires_unambiguous_class(tmp_path):
     with pytest.raises(SystemExit):
         make_factory(str(src), None)()
     assert type(make_factory(str(src), "B")()).__name__ == "B"
+
+
+def test_place_order_passes_price_distances():
+    from hawk_bt.runtime.engine_api import Engine
+    from hawk_bt.strategy.api import SessionState
+
+    seen = {}
+
+    class Base:
+        async def place_order(self, **kw):
+            import numpy as np
+            seen.update(kw)
+            return np.zeros(18)
+
+    eng = Engine(Base(), SessionState(snapshot=None), gate_policy="deferred")
+    asyncio.run(eng.place_order(side="buy", order_type="limit", price=100.0, units=1, take_profit=0.5, stop_loss=0.25))
+    assert seen["take_profit"] == 0.005 and seen["stop_loss"] == 0.0025 and seen["trailing_stop"] is None

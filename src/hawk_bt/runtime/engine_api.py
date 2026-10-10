@@ -231,14 +231,20 @@ class Engine:
         time_limit: float | None = None,
         timeout: float = 10.0,
     ) -> np.ndarray:
+        # The Rust encoder scales order TP/SL/trailing distances by 100 (a legacy
+        # pips convention) while the engine reads plain price distances, as for
+        # place_ticket. Undo the scaling so both APIs take price distances.
+        def _dist(v: float | None) -> float | None:
+            return None if v is None else float(v) / 100.0
+
         out = await self._base.place_order(
             side=side,
             order_type=order_type,
             price=price,
             units=units,
-            take_profit=take_profit,
-            stop_loss=stop_loss,
-            trailing_stop=trailing_stop,
+            take_profit=_dist(take_profit),
+            stop_loss=_dist(stop_loss),
+            trailing_stop=_dist(trailing_stop),
             time_limit=time_limit,
             timeout=timeout,
         )
