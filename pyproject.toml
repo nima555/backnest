@@ -4,14 +4,17 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hawk-bt"
-version = "0.1.3"
+version = "0.2.0"
 description = "Python client library for Hawk-Backtester — local strategy backtesting via WS <-> WASM simulator"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
   "numpy>=1.23",
-  "hawk-bt-rust-engine",
+  "hawk-bt-rust-engine>=0.1.3",
 ]
+
+[project.scripts]
+hawk-bt = "hawk_bt.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

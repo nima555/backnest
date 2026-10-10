@@ -86,6 +86,19 @@ impl RustEngineAsync {
         Ok(fut.into())
     }
 
+    /// Generic RPC: send `payload` to the browser under `fn_id` and return the raw reply bytes.
+    /// Lets the Python layer add browser-side features (e.g. strategy params, watch mode)
+    /// without a new Rust release for every function id.
+    pub fn call_raw<'a>(&'a self, py: Python<'a>, fn_id: u16, payload: Vec<u8>, timeout_secs: Option<f64>) -> PyResult<PyObject> {
+        let srv = self.server.clone();
+        let dur = Duration::from_secs_f64(timeout_secs.unwrap_or(10.0));
+        let fut = future_into_py(py, async move {
+            let out = srv.send_run_and_wait(fn_id, &payload, dur).await?;
+            Python::with_gil(|py| Ok::<PyObject, PyErr>(pyo3::types::PyBytes::new(py, &out).into()))
+        })?;
+        Ok(fut.into())
+    }
+
     pub fn step_next<'a>(&'a self, py: Python<'a>, timeout_secs: Option<f64>) -> PyResult<PyObject> {
         let srv = self.server.clone();
         let dur = Duration::from_secs_f64(timeout_secs.unwrap_or(10.0));

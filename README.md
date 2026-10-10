@@ -28,7 +28,36 @@ hawk-bt (Python)
 pip install -e .
 ```
 
-## Quick Start
+## Quick Start (watch mode, hawk-bt >= 0.2)
+
+```bash
+pip install -U hawk-bt
+hawk-bt run my_strategy.py          # serves the strategy and re-runs on every save
+```
+
+```python
+# my_strategy.py
+from hawk_bt import Strategy, Context, Param
+
+class MaCross(Strategy):
+    fast = Param(10, min=3, max=50, step=1)    # becomes a slider in the app
+    slow = Param(50, min=10, max=200, step=5)
+
+    async def step(self, ctx: Context) -> None:
+        close = ctx.state.candles.close[: int(ctx.state.snapshot.step)]
+        ...
+```
+
+Open the [Backnest app](https://app.hawk-backtester.com/simulator/graph?source=python), pick a dataset and click **Connect to Local Strategy**. Then:
+
+- every `Param` appears as a slider; moving it re-runs your local strategy with the new value;
+- saving the file reloads the strategy and re-runs automatically;
+- each re-run shows a **diff against the previous run** (PnL change, added / removed / changed trades).
+
+Your code never leaves your machine — the browser only receives orders over `ws://127.0.0.1:8787`.
+See [`examples/watch_ma_cross.py`](examples/watch_ma_cross.py).
+
+## Quick Start (manual)
 
 ```python
 import asyncio

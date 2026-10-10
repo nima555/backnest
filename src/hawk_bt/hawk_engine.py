@@ -2,13 +2,24 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import threading
 import time
-from typing import Callable, Optional
+from typing import Callable, Optional, Union
 
 from hawk_bt.runtime.rust_engine_async_adapter import RustEngineAsyncAdapter
 from hawk_bt.runtime.loop import run_attached, BacktestResult
+from hawk_bt.runtime.browser_rpc import request_rerun, session_hello
 from hawk_bt.strategy.api import Strategy
+
+try:  # pragma: no cover - metadata lookup
+    from importlib.metadata import version as _pkg_version
+
+    _VERSION = _pkg_version("hawk-bt")
+except Exception:  # pragma: no cover
+    _VERSION = "dev"
+
+StrategyFactory = Callable[[], Strategy]
 
 logger = logging.getLogger(__name__)
 
@@ -27,13 +38,21 @@ class HawkEngine:
         *,
         on_result: Optional[Callable[[BacktestResult], None]] = None,
         single_run: bool = False,
+        watch: Optional[Union[str, os.PathLike]] = None,
     ):
+        """
+        Args:
+            watch: Path of the strategy source file. When set (and the strategy is
+                given as a factory, e.g. via ``hawk-bt run --watch``), saving the file
+                reloads the strategy and asks the browser to re-run automatically.
+        """
         self._host = host
         self._port = port
         self._on_result = on_result
         self._single_run = single_run
+        self._watch = os.fspath(watch) if watch else None
 
-    def start(self, strategy: Strategy) -> None:
+    def start(self, strategy: Union[Strategy, StrategyFactory]) -> None:
         """Run the strategy in a blocking connect-run-disconnect loop.
 
         Waits for browser connections, runs the strategy, prints results,
@@ -82,7 +101,45 @@ class HawkEngine:
     def _start_bg_target(self, strategy: Strategy) -> None:
         asyncio.run(self._run_loop(strategy))
 
-    async def _run_loop(self, strategy: Strategy) -> None:
+    # -- watch mode -------------------------------------------------------------
+    def _mtime(self) -> Optional[float]:
+        try:
+            return os.stat(self._watch).st_mtime if self._watch else None
+        except OSError:
+            return None
+
+    def _reload(self, factory: Optional[StrategyFactory], current: Strategy) -> Strategy:
+        if factory is None:
+            return current
+        try:
+            fresh = factory()
+            logger.info("Reloaded %s from %s", type(fresh).__name__, self._watch)
+            return fresh
+        except Exception as e:
+            logger.error("Reload failed, keeping the previous version: %s", e)
+            return current
+
+    async def _wait_disconnect_or_change(self, adapter, mtime: Optional[float]) -> bool:
+        """Wait for the browser to disconnect. Returns True if the watched file changed first."""
+        while True:
+            try:
+                await adapter.get_snapshot_raw(timeout=1.0)
+            except Exception:
+                return False
+            if self._watch and self._mtime() != mtime:
+                return True
+            await asyncio.sleep(0.4)
+
+    async def _run_loop(self, strategy_or_factory: Union[Strategy, StrategyFactory]) -> None:
+        factory: Optional[StrategyFactory] = None
+        if isinstance(strategy_or_factory, Strategy):
+            strategy = strategy_or_factory
+        else:
+            factory = strategy_or_factory
+            strategy = factory()
+        source = os.path.basename(self._watch) if self._watch else None
+        mtime = self._mtime()
+
         adapter = RustEngineAsyncAdapter(
             host=self._host, port=self._port, start_seq=1
         )
@@ -110,6 +167,17 @@ class HawkEngine:
                     await adapter.get_sync_policy(timeout=5.0) or "eager"
                 )
                 logger.info("Sync policy: %s", gate_policy)
+
+                if self._watch and self._mtime() != mtime:
+                    strategy = self._reload(factory, strategy)
+                    mtime = self._mtime()
+                await session_hello(
+                    adapter,
+                    strategy,
+                    source=source,
+                    watching=bool(self._watch and factory),
+                    version=_VERSION,
+                )
 
                 t0 = time.perf_counter()
                 result = await run_attached(
@@ -147,7 +215,16 @@ class HawkEngine:
                 logger.info("Single-run mode: exiting after one simulation")
                 break
 
-            await adapter.wait_for_disconnect()
+            if self._watch and factory is not None:
+                changed = await self._wait_disconnect_or_change(adapter, mtime)
+                if changed:
+                    strategy = self._reload(factory, strategy)
+                    mtime = self._mtime()
+                    logger.info("Source changed: asking the browser to re-run")
+                    await request_rerun(adapter, reason="file_changed", source=source)
+                    await adapter.wait_for_disconnect(verbose=False)
+            else:
+                await adapter.wait_for_disconnect()
 
     @staticmethod
     def _report(result: BacktestResult, elapsed: float, policy: str) -> None:

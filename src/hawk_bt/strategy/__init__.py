@@ -1,6 +1,7 @@
 """Strategy interface for hawk_bt."""
 from hawk_bt.strategy.api import Strategy, Context, SessionState, EngineProtocol
 from hawk_bt.strategy.commands import hold, not_implemented, StepFn
+from hawk_bt.strategy.params import Param
 
 __all__ = [
     "Strategy",
@@ -10,4 +11,5 @@ __all__ = [
     "hold",
     "not_implemented",
     "StepFn",
+    "Param",
 ]

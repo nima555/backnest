@@ -274,6 +274,9 @@ async def run_attached(
     state = SessionState(snapshot=s0, candles=candles)
     eng = Engine(engine, state, refresh_after_reads=True, gate_policy=gate_policy)
     ctx = Context(engine=eng, state=state)
+    on_start = getattr(strategy, "on_start", None)
+    if on_start is not None:
+        await on_start(ctx)
 
     balance_list: list[float] = []
     equity_list: list[float] = []

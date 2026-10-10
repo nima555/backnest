@@ -70,6 +70,23 @@ class RustEngineAsyncAdapter:
         out = await self._eng.close_positions(position_ids, actions, ratios, timeout)
         return np.asarray(out)
 
+    @property
+    def supports_raw_calls(self) -> bool:
+        return hasattr(self._eng, "call_raw")
+
+    async def call_json(self, fn_id: int, payload: dict, timeout: float = 5.0) -> dict:
+        """Send a JSON request to the browser under ``fn_id`` and decode its JSON reply.
+
+        Requires hawk-bt-rust-engine >= 0.1.3 (``call_raw``).
+        """
+        import json
+
+        if not self.supports_raw_calls:
+            raise RuntimeError("hawk-bt-rust-engine >= 0.1.3 is required for browser calls")
+        raw = await self._eng.call_raw(fn_id, json.dumps(payload).encode("utf-8"), timeout)
+        text = bytes(raw).decode("utf-8", errors="replace").strip()
+        return json.loads(text) if text.startswith("{") else {}
+
     async def get_sync_policy(self, timeout: float = 5.0) -> Optional[str]:
         return await self._eng.get_sync_policy(timeout)
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Dict, Protocol, runtime_checkable
+from typing import Optional, Any, Dict, Protocol, runtime_checkable
 
 import numpy as np
 
@@ -94,3 +94,25 @@ class Strategy(ABC):
     @abstractmethod
     async def step(self, ctx: Context) -> None:
         raise NotImplementedError
+
+    async def on_start(self, ctx: Context) -> None:
+        """Called once at the start of every run. Reset per-run state here."""
+        return None
+
+    # -- tunable parameters (see hawk_bt.strategy.params.Param) -------------
+    @classmethod
+    def param_schema(cls) -> list:
+        """JSON-able description of the strategy's ``Param`` attributes."""
+        from hawk_bt.strategy.params import param_schema
+
+        return param_schema(cls)
+
+    def set_params(self, values: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        """Apply parameter values (validated and clamped); returns effective values."""
+        from hawk_bt.strategy.params import apply_params
+
+        return apply_params(self, values)
+
+    @property
+    def strategy_name(self) -> str:
+        return type(self).__name__
