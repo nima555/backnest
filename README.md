@@ -48,7 +48,7 @@ class MaCross(Strategy):
         ...
 ```
 
-Open the [Backnest app](https://app.hawk-backtester.com/simulator/graph?source=python), pick a dataset and click **Connect to Local Strategy**. Then:
+Open the [Hawk Backtester app](https://app.hawk-backtester.com/simulator/graph?source=python), pick a dataset and click **Connect to Local Strategy**. Then:
 
 - every `Param` appears as a slider; moving it re-runs your local strategy with the new value;
 - saving the file reloads the strategy and re-runs automatically;
@@ -57,7 +57,7 @@ Open the [Backnest app](https://app.hawk-backtester.com/simulator/graph?source=p
 Your code never leaves your machine — the browser only receives orders over `ws://127.0.0.1:8787`.
 See [`examples/watch_ma_cross.py`](examples/watch_ma_cross.py).
 
-## Changes in 0.2.1 (with the Backnest engine update of 2026-10-10)
+## Changes in 0.2.1 (with the Hawk Backtester engine update of 2026-10-10)
 
 - `snapshot.step` now counts the bars seen **including the current one**: `candles.close[:step][-1]` is the bar your strategy acts on, and market orders fill on that bar (or the next bar's open if "fill timing" is set to next open). Previously strategies effectively traded two bars late.
 - TP/SL, limit and stop orders fill at their price level (at the open if the bar gapped through it). Spread, fee rate, fixed fee and slippage are configurable in the app and applied on every fill.
